@@ -1,0 +1,13 @@
+version: "2"
+
+linters:
+  settings:
+    govet:
+      disable:
+        - composites
+
+    misspell:
+      locale: US
+      ignore-rules:
+        - ivg
+        - ivgview

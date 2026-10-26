@@ -27,7 +27,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	var z render.Renderer
 	z.SetRasterizer(img.NewRasterizer(screen), screen.Bounds())
 	if err := decode.Decode(&z, g.ivgData); err != nil {
-		fmt.Printf("Error decoding IVG data: %v\n", err)
+		fmt.Printf("Error decoding IconVG data: %v\n", err)
 	}
 }
 

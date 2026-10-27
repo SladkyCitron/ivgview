@@ -10,6 +10,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/ncruces/zenity"
 	"github.com/vibrantgio/ivg/decode"
 	"github.com/vibrantgio/ivg/raster/img"
 	"github.com/vibrantgio/ivg/render"
@@ -70,6 +72,39 @@ func (g *Game) Update() error {
 			}
 		}()
 	}
+
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) ||
+		inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		go func() {
+			path, _ := zenity.SelectFile(
+				zenity.Modal(),
+				zenity.FileFilters{
+					{"IconVG file", []string{"*.ivg", "*.iconvg"}, true},
+				},
+			)
+			if path == "" {
+				return
+			}
+
+			ivgData, err := os.ReadFile(path)
+			if err != nil {
+				g.m.Lock()
+				if g.err == nil {
+					g.err = err
+				}
+				g.m.Unlock()
+			}
+
+			if err := g.loadImage(path, ivgData); err != nil {
+				g.m.Lock()
+				if g.err == nil {
+					g.err = err
+				}
+				g.m.Unlock()
+			}
+		}()
+	}
+
 	return nil
 }
 
@@ -97,7 +132,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	defer g.m.Unlock()
 
 	if g.ivgImage == nil {
-		ebitenutil.DebugPrint(screen, "Drop an IconVG file here to view it.")
+		ebitenutil.DebugPrint(screen, "Drop an IconVG file here to view it;\nClick or press Enter to open a file dialog.")
 		return
 	}
 

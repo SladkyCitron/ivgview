@@ -25,6 +25,7 @@ const (
 type Game struct {
 	ivgImage *ebiten.Image
 	err      error
+	loading  bool
 	m        sync.Mutex
 }
 
@@ -39,6 +40,9 @@ func (g *Game) Update() error {
 
 	if files := ebiten.DroppedFiles(); files != nil {
 		go func() {
+			g.m.Lock()
+			g.loading = true
+			g.m.Unlock()
 			if err := fs.WalkDir(files, ".", func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return err
@@ -86,6 +90,10 @@ func (g *Game) Update() error {
 				return
 			}
 
+			g.m.Lock()
+			g.loading = true
+			g.m.Unlock()
+
 			ivgData, err := os.ReadFile(path)
 			if err != nil {
 				g.m.Lock()
@@ -118,11 +126,12 @@ func (g *Game) loadImage(path string, b []byte) error {
 
 	eimg := ebiten.NewImageFromImage(ivgImage)
 
+	ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
+
 	g.m.Lock()
 	g.ivgImage = eimg
+	g.loading = false
 	g.m.Unlock()
-
-	ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
 
 	return nil
 }
@@ -130,6 +139,11 @@ func (g *Game) loadImage(path string, b []byte) error {
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.m.Lock()
 	defer g.m.Unlock()
+
+	if g.loading {
+		ebitenutil.DebugPrint(screen, "Loading...")
+		return
+	}
 
 	if g.ivgImage == nil {
 		ebitenutil.DebugPrint(screen, "Drop an IconVG file here to view it;\nClick or press Enter to open a file dialog.")

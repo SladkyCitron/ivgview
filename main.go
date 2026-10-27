@@ -78,7 +78,7 @@ func (g *Game) loadImage(path string, b []byte) error {
 	var z render.Renderer
 	z.SetRasterizer(img.NewRasterizer(ivgImage), ivgImage.Bounds())
 	if err := decode.Decode(&z, b); err != nil {
-		return fmt.Errorf("error decoding IconVG data: %w\n", err)
+		return fmt.Errorf("error decoding IconVG data: %w", err)
 	}
 
 	eimg := ebiten.NewImageFromImage(ivgImage)

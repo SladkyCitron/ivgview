@@ -117,14 +117,28 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) loadImage(path string, b []byte) error {
-	ivgImage := image.NewRGBA(image.Rect(0, 0, screenWidth, screenHeight))
+	vb, err := decode.DecodeViewBox(b)
+	if err != nil {
+		return fmt.Errorf("error decoding IconVG data: %w", err)
+	}
+
+	minX, minY, maxX, maxY := vb.AspectMeet(
+		float32(screenWidth),
+		float32(screenHeight),
+		0.5, 0.5,
+	)
+
+	width := int(maxX - minX)
+	height := int(maxY - minY)
+
+	rgba := image.NewRGBA(image.Rect(0, 0, width, height))
 	var z render.Renderer
-	z.SetRasterizer(img.NewRasterizer(ivgImage), ivgImage.Bounds())
+	z.SetRasterizer(img.NewRasterizer(rgba), rgba.Bounds())
 	if err := decode.Decode(&z, b); err != nil {
 		return fmt.Errorf("error decoding IconVG data: %w", err)
 	}
 
-	eimg := ebiten.NewImageFromImage(ivgImage)
+	eimg := ebiten.NewImageFromImage(rgba)
 
 	ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
 

@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
+
+	_ "embed"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -17,16 +20,21 @@ import (
 	"github.com/vibrantgio/ivg/render"
 )
 
+//go:embed checkerboard.kage
+var checkerboardKage []byte
+
 const (
 	screenWidth  = 640
 	screenHeight = 480
 )
 
 type Game struct {
-	ivgImage *ebiten.Image
-	err      error
-	loading  bool
-	m        sync.Mutex
+	checkerboardShader  *ebiten.Shader
+	checkerboardEnabled bool
+	ivgImage            *ebiten.Image
+	err                 error
+	loading             bool
+	m                   sync.Mutex
 }
 
 func (g *Game) Update() error {
@@ -113,6 +121,12 @@ func (g *Game) Update() error {
 		}()
 	}
 
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+		g.m.Lock()
+		g.checkerboardEnabled = !g.checkerboardEnabled
+		g.m.Unlock()
+	}
+
 	return nil
 }
 
@@ -164,6 +178,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
+	if g.checkerboardEnabled {
+		op := &ebiten.DrawRectShaderOptions{
+			Uniforms: map[string]any{
+				"CellSize":   float32(8),
+				"LightColor": []float32{0.85, 0.85, 0.85, 1},
+				"DarkColor":  []float32{0.65, 0.65, 0.65, 1},
+			},
+		}
+		screen.DrawRectShader(screenWidth, screenHeight, g.checkerboardShader, op)
+	} else {
+		screen.Fill(color.Black)
+	}
+
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64((screenWidth-g.ivgImage.Bounds().Dx())/2), float64((screenHeight-g.ivgImage.Bounds().Dy())/2))
 	op.Filter = ebiten.FilterLinear
@@ -183,7 +210,13 @@ func main() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("ivgview")
 
-	g := &Game{}
+	checkerboardShader, err := ebiten.NewShader(checkerboardKage)
+	if err != nil {
+		fmt.Printf("Error compiling checkerboard shader: %v\n", err)
+		os.Exit(1)
+	}
+
+	g := &Game{checkerboardShader: checkerboardShader}
 
 	if len(os.Args) == 2 {
 		g.loading = true

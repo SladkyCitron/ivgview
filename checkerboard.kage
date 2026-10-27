@@ -1,0 +1,14 @@
+//kage:unit pixels
+
+package main
+
+var CellSize float
+var LightColor vec4
+var DarkColor vec4
+
+func Fragment(dstPos vec4) vec4 {
+	cell := floor(dstPos.xy / CellSize)
+	parity := mod(cell.x + cell.y, 2.0)
+
+	return mix(LightColor, DarkColor, parity)
+}

@@ -5,8 +5,10 @@ import (
 	"image"
 	"image/color"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	_ "embed"
@@ -32,6 +34,9 @@ type Game struct {
 	checkerboardShader  *ebiten.Shader
 	checkerboardEnabled bool
 	ivgImage            *ebiten.Image
+	disasmLines         []string
+	disasmEnabled       bool
+	disasmScrollOffset  int
 	err                 error
 	loading             bool
 	m                   sync.Mutex
@@ -121,10 +126,34 @@ func (g *Game) Update() error {
 		}()
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) && !g.disasmEnabled {
 		g.m.Lock()
 		g.checkerboardEnabled = !g.checkerboardEnabled
 		g.m.Unlock()
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		g.m.Lock()
+		g.disasmEnabled = !g.disasmEnabled
+		g.m.Unlock()
+	}
+
+	if g.disasmEnabled {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.disasmScrollOffset++
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			g.disasmScrollOffset--
+		}
+
+		_, yoff := ebiten.Wheel()
+		if yoff > 0 {
+			g.disasmScrollOffset -= int(math.Ceil(yoff))
+		} else if yoff < 0 {
+			g.disasmScrollOffset += int(math.Ceil(-yoff))
+		}
+
+		g.disasmScrollOffset = max(0, g.disasmScrollOffset)
 	}
 
 	return nil
@@ -154,11 +183,17 @@ func (g *Game) loadImage(path string, b []byte) error {
 
 	eimg := ebiten.NewImageFromImage(rgba)
 
+	disasm, err := decode.Disassemble(b)
+	if err != nil {
+		return fmt.Errorf("error disassembling IconVG data: %w", err)
+	}
+
 	ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
 
 	g.m.Lock()
 	g.ivgImage = eimg
 	g.loading = false
+	g.disasmLines = strings.Split(string(disasm), "\n")
 	g.m.Unlock()
 
 	return nil
@@ -175,6 +210,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.ivgImage == nil {
 		ebitenutil.DebugPrint(screen, "Drop an IconVG file here to view it;\nClick or press Enter to open a file dialog.")
+		return
+	}
+
+	if g.disasmEnabled {
+		const lineHeight = 16
+		visibleLines := screen.Bounds().Dy() / lineHeight
+
+		maxScroll := max(0, len(g.disasmLines)-visibleLines)
+		g.disasmScrollOffset = min(g.disasmScrollOffset, maxScroll)
+
+		end := min(g.disasmScrollOffset+visibleLines, len(g.disasmLines))
+		visible := strings.Join(g.disasmLines[g.disasmScrollOffset:end], "\n")
+
+		ebitenutil.DebugPrint(screen, visible)
 		return
 	}
 

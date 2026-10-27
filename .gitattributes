@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# make Kage shaders be highlighted in GitHub like Go code
+*.kage linguist-language=Go

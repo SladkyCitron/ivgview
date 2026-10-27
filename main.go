@@ -2,9 +2,14 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/vibrantgio/ivg/decode"
 	"github.com/vibrantgio/ivg/raster/img"
 	"github.com/vibrantgio/ivg/render"
@@ -16,19 +21,82 @@ const (
 )
 
 type Game struct {
-	ivgData []byte
+	ivgImage *ebiten.Image
+	err      error
+	m        sync.Mutex
 }
 
 func (g *Game) Update() error {
+	if err := func() error {
+		g.m.Lock()
+		defer g.m.Unlock()
+		return g.err
+	}(); err != nil {
+		return err
+	}
+
+	if files := ebiten.DroppedFiles(); files != nil {
+		go func() {
+			if err := fs.WalkDir(files, ".", func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+
+				fi, err := d.Info()
+				if err != nil {
+					return err
+				}
+
+				if fi.IsDir() {
+					return nil
+				}
+
+				ivgData, err := fs.ReadFile(files, path)
+				if err != nil {
+					return err
+				}
+
+				ivgImage := image.NewRGBA(image.Rect(0, 0, screenWidth, screenHeight))
+				var z render.Renderer
+				z.SetRasterizer(img.NewRasterizer(ivgImage), ivgImage.Bounds())
+				if err := decode.Decode(&z, ivgData); err != nil {
+					return fmt.Errorf("error decoding IconVG data: %w\n", err)
+				}
+
+				eimg := ebiten.NewImageFromImage(ivgImage)
+
+				g.m.Lock()
+				g.ivgImage = eimg
+				g.m.Unlock()
+
+				ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
+
+				return nil
+			}); err != nil {
+				g.m.Lock()
+				if g.err == nil {
+					g.err = err
+				}
+				g.m.Unlock()
+			}
+		}()
+	}
 	return nil
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	var z render.Renderer
-	z.SetRasterizer(img.NewRasterizer(screen), screen.Bounds())
-	if err := decode.Decode(&z, g.ivgData); err != nil {
-		fmt.Printf("Error decoding IconVG data: %v\n", err)
+	g.m.Lock()
+	defer g.m.Unlock()
+
+	if g.ivgImage == nil {
+		ebitenutil.DebugPrint(screen, "Drop an IconVG file here to view it.")
+		return
 	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64((screenWidth-g.ivgImage.Bounds().Dx())/2), float64((screenHeight-g.ivgImage.Bounds().Dy())/2))
+	op.Filter = ebiten.FilterLinear
+	screen.DrawImage(g.ivgImage, op)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
@@ -36,21 +104,16 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Printf("Usage: %s file.ivg\n", os.Args[0])
-		os.Exit(1)
-	}
+	/*
+		if len(os.Args) < 2 {
+			fmt.Printf("Usage: %s file.ivg\n", os.Args[0])
+			os.Exit(1)
+		}
+	*/
 
-	ivgData, err := os.ReadFile(os.Args[1])
-	if err != nil {
-		fmt.Printf("Error reading file: %v\n", err)
-		os.Exit(1)
-	}
-
-	g := &Game{ivgData: ivgData}
+	g := &Game{}
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("ivgview")
 	if err := ebiten.RunGame(g); err != nil {
 		fmt.Printf("Error running game loop: %v\n", err)

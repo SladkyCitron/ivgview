@@ -175,17 +175,30 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
-	/*
-		if len(os.Args) < 2 {
-			fmt.Printf("Usage: %s file.ivg\n", os.Args[0])
-			os.Exit(1)
-		}
-	*/
-
-	g := &Game{}
+	if len(os.Args) > 2 {
+		fmt.Printf("Usage: %s file.ivg\n", os.Args[0])
+		os.Exit(1)
+	}
 
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("ivgview")
+
+	g := &Game{}
+
+	if len(os.Args) == 2 {
+		g.loading = true
+		ivgData, err := os.ReadFile(os.Args[1])
+		if err != nil {
+			fmt.Printf("Error reading file: %v\n", err)
+			os.Exit(1)
+		}
+
+		if err := g.loadImage(os.Args[1], ivgData); err != nil {
+			fmt.Printf("Error loading image: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
 	if err := ebiten.RunGame(g); err != nil {
 		fmt.Printf("Error running game loop: %v\n", err)
 		os.Exit(1)

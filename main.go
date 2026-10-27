@@ -194,6 +194,7 @@ func (g *Game) loadImage(path string, b []byte) error {
 	g.ivgImage = eimg
 	g.loading = false
 	g.disasmLines = strings.Split(string(disasm), "\n")
+	g.disasmScrollOffset = 0
 	g.m.Unlock()
 
 	return nil

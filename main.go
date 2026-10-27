@@ -56,20 +56,9 @@ func (g *Game) Update() error {
 					return err
 				}
 
-				ivgImage := image.NewRGBA(image.Rect(0, 0, screenWidth, screenHeight))
-				var z render.Renderer
-				z.SetRasterizer(img.NewRasterizer(ivgImage), ivgImage.Bounds())
-				if err := decode.Decode(&z, ivgData); err != nil {
-					return fmt.Errorf("error decoding IconVG data: %w\n", err)
+				if err := g.loadImage(path, ivgData); err != nil {
+					return err
 				}
-
-				eimg := ebiten.NewImageFromImage(ivgImage)
-
-				g.m.Lock()
-				g.ivgImage = eimg
-				g.m.Unlock()
-
-				ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
 
 				return nil
 			}); err != nil {
@@ -81,6 +70,25 @@ func (g *Game) Update() error {
 			}
 		}()
 	}
+	return nil
+}
+
+func (g *Game) loadImage(path string, b []byte) error {
+	ivgImage := image.NewRGBA(image.Rect(0, 0, screenWidth, screenHeight))
+	var z render.Renderer
+	z.SetRasterizer(img.NewRasterizer(ivgImage), ivgImage.Bounds())
+	if err := decode.Decode(&z, b); err != nil {
+		return fmt.Errorf("error decoding IconVG data: %w\n", err)
+	}
+
+	eimg := ebiten.NewImageFromImage(ivgImage)
+
+	g.m.Lock()
+	g.ivgImage = eimg
+	g.m.Unlock()
+
+	ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
+
 	return nil
 }
 

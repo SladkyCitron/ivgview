@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	_ "embed"
 
@@ -28,20 +29,25 @@ var checkerboardKage []byte
 const (
 	screenWidth  = 640
 	screenHeight = 480
+	renderDelay  = 200 * time.Millisecond
 )
 
 type Game struct {
 	checkerboardShader  *ebiten.Shader
 	checkerboardEnabled bool
 	ivgImage            *ebiten.Image
+	ivgData             []byte
 	disasmLines         []string
 	disasmEnabled       bool
 	disasmScrollOffset  int
 	err                 error
 	loading             bool
 	zoom                float64
+	renderedZoom        float64
 	panX                float64
 	panY                float64
+	renderTimer         *time.Timer
+	renderGeneration    uint64
 	m                   sync.Mutex
 }
 
@@ -156,10 +162,13 @@ func (g *Game) Update() error {
 	if yoff != 0 {
 		mx, my := ebiten.CursorPosition()
 		factor := math.Pow(1.2, yoff)
+		g.m.Lock()
 		g.zoom, g.panX, g.panY = zoomAt(
 			g.zoom, g.panX, g.panY,
 			mx, my, factor,
 		)
+		g.deferRender()
+		g.m.Unlock()
 	}
 
 	return nil
@@ -180,14 +189,10 @@ func (g *Game) loadImage(path string, b []byte) error {
 	width := int(maxX - minX)
 	height := int(maxY - minY)
 
-	rgba := image.NewRGBA(image.Rect(0, 0, width, height))
-	var z render.Renderer
-	z.SetRasterizer(img.NewRasterizer(rgba), rgba.Bounds())
-	if err := decode.Decode(&z, b); err != nil {
+	eimg, err := renderImage(b, 1)
+	if err != nil {
 		return fmt.Errorf("error decoding IconVG data: %w", err)
 	}
-
-	eimg := ebiten.NewImageFromImage(rgba)
 
 	disasm, err := decode.Disassemble(b)
 	if err != nil {
@@ -197,16 +202,91 @@ func (g *Game) loadImage(path string, b []byte) error {
 	ebiten.SetWindowTitle(fmt.Sprintf("%s - ivgview", filepath.Base(path)))
 
 	g.m.Lock()
+	if g.renderTimer != nil {
+		g.renderTimer.Stop()
+		g.renderTimer = nil
+	}
+	g.renderGeneration++
 	g.ivgImage = eimg
+	g.ivgData = append([]byte(nil), b...)
 	g.loading = false
 	g.disasmLines = strings.Split(string(disasm), "\n")
 	g.disasmScrollOffset = 0
 	g.zoom = 1.0
+	g.renderedZoom = 1.0
 	g.panX = float64((screenWidth - width) / 2)
 	g.panY = float64((screenHeight - height) / 2)
 	g.m.Unlock()
 
 	return nil
+}
+
+func renderImage(b []byte, zoom float64) (*ebiten.Image, error) {
+	vb, err := decode.DecodeViewBox(b)
+	if err != nil {
+		return nil, err
+	}
+
+	minX, minY, maxX, maxY := vb.AspectMeet(
+		float32(screenWidth)*float32(zoom),
+		float32(screenHeight)*float32(zoom),
+		0.5, 0.5,
+	)
+
+	width := max(1, int(maxX-minX))
+	height := max(1, int(maxY-minY))
+	rgba := image.NewRGBA(image.Rect(0, 0, width, height))
+	var z render.Renderer
+	z.SetRasterizer(img.NewRasterizer(rgba), rgba.Bounds())
+	if err := decode.Decode(&z, b); err != nil {
+		return nil, err
+	}
+
+	return ebiten.NewImageFromImage(rgba), nil
+}
+
+func (g *Game) deferRender() {
+	g.renderGeneration++
+	generation := g.renderGeneration
+	if g.renderTimer != nil {
+		g.renderTimer.Stop()
+	}
+	g.renderTimer = time.AfterFunc(renderDelay, func() {
+		g.renderDeferred(generation)
+	})
+}
+
+func (g *Game) renderDeferred(generation uint64) {
+	g.m.Lock()
+	if generation != g.renderGeneration || len(g.ivgData) == 0 {
+		g.m.Unlock()
+		return
+	}
+	zoom := g.zoom
+	data := append([]byte(nil), g.ivgData...)
+	g.m.Unlock()
+
+	eimg, err := renderImage(data, zoom)
+
+	g.m.Lock()
+	defer g.m.Unlock()
+	if generation != g.renderGeneration || zoom != g.zoom {
+		if eimg != nil {
+			eimg.Deallocate()
+		}
+		return
+	}
+	if err != nil {
+		if g.err == nil {
+			g.err = fmt.Errorf("error rendering IconVG data: %w", err)
+		}
+		return
+	}
+	if g.ivgImage != nil {
+		g.ivgImage.Deallocate()
+	}
+	g.ivgImage = eimg
+	g.renderedZoom = zoom
 }
 
 func zoomAt(
@@ -272,7 +352,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(g.zoom, g.zoom)
+	op.GeoM.Scale(g.zoom/g.renderedZoom, g.zoom/g.renderedZoom)
 	op.GeoM.Translate(g.panX, g.panY)
 	//op.GeoM.Translate(float64((screenWidth-g.ivgImage.Bounds().Dx())/2), float64((screenHeight-g.ivgImage.Bounds().Dy())/2))
 	op.Filter = ebiten.FilterLinear

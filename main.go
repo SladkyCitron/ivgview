@@ -43,14 +43,6 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
-	if err := func() error {
-		g.m.Lock()
-		defer g.m.Unlock()
-		return g.err
-	}(); err != nil {
-		return err
-	}
-
 	if files := ebiten.DroppedFiles(); files != nil {
 		go func() {
 			g.m.Lock()
@@ -114,6 +106,7 @@ func (g *Game) Update() error {
 					g.err = err
 				}
 				g.m.Unlock()
+				return
 			}
 
 			if err := g.loadImage(path, ivgData); err != nil {
@@ -203,6 +196,11 @@ func (g *Game) loadImage(path string, b []byte) error {
 func (g *Game) Draw(screen *ebiten.Image) {
 	g.m.Lock()
 	defer g.m.Unlock()
+
+	if g.err != nil {
+		ebitenutil.DebugPrint(screen, fmt.Sprintf("Error: %v", g.err))
+		return
+	}
 
 	if g.loading {
 		ebitenutil.DebugPrint(screen, "Loading...")

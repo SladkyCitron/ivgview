@@ -39,6 +39,9 @@ type Game struct {
 	disasmScrollOffset  int
 	err                 error
 	loading             bool
+	zoom                float64
+	panX                float64
+	panY                float64
 	m                   sync.Mutex
 }
 
@@ -149,6 +152,16 @@ func (g *Game) Update() error {
 		g.disasmScrollOffset = max(0, g.disasmScrollOffset)
 	}
 
+	_, yoff := ebiten.Wheel()
+	if yoff != 0 {
+		mx, my := ebiten.CursorPosition()
+		factor := math.Pow(1.2, yoff)
+		g.zoom, g.panX, g.panY = zoomAt(
+			g.zoom, g.panX, g.panY,
+			mx, my, factor,
+		)
+	}
+
 	return nil
 }
 
@@ -188,9 +201,28 @@ func (g *Game) loadImage(path string, b []byte) error {
 	g.loading = false
 	g.disasmLines = strings.Split(string(disasm), "\n")
 	g.disasmScrollOffset = 0
+	g.zoom = 1.0
+	g.panX = float64((screenWidth - width) / 2)
+	g.panY = float64((screenHeight - height) / 2)
 	g.m.Unlock()
 
 	return nil
+}
+
+func zoomAt(
+	zoom, panX, panY float64,
+	mouseX, mouseY int,
+	factor float64,
+) (float64, float64, float64) {
+	newZoom := max(0.1, min(zoom*factor, 20.0))
+	ratio := newZoom / zoom
+
+	panX = float64(mouseX) -
+		(float64(mouseX)-panX)*ratio
+	panY = float64(mouseY) -
+		(float64(mouseY)-panY)*ratio
+
+	return newZoom, panX, panY
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -240,7 +272,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64((screenWidth-g.ivgImage.Bounds().Dx())/2), float64((screenHeight-g.ivgImage.Bounds().Dy())/2))
+	op.GeoM.Scale(g.zoom, g.zoom)
+	op.GeoM.Translate(g.panX, g.panY)
+	//op.GeoM.Translate(float64((screenWidth-g.ivgImage.Bounds().Dx())/2), float64((screenHeight-g.ivgImage.Bounds().Dy())/2))
 	op.Filter = ebiten.FilterLinear
 	screen.DrawImage(g.ivgImage, op)
 }

@@ -17,7 +17,7 @@ Open an IconVG file to inspect its rendered image or the instructions that make 
 
 No support for FFV1 and FFV2 yet.
 
-## 🚀 Usage
+## 🤔 Usage
 
 1. Install [Go](https://go.dev).
 2. Run `go install github.com/SladkyCitron/ivgview@latest` to install ivgview.
@@ -38,7 +38,7 @@ No support for FFV1 and FFV2 yet.
 
 MIT License (see [LICENSE](LICENSE))
 
-## 🙏 Acknowledgements
+## ❤️ Acknowledgements
 
 - [IconVG](https://github.com/google/iconvg)
 - [Ebitengine](https://ebitengine.org/)
